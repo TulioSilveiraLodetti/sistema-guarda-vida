@@ -1,12 +1,14 @@
-const KEY = "demo_cbm_state";
+const KEY = "demo_cbm_state_v5";
 
 const POSTOS = [
-  { id: 1, nome: "Posto Central", descricao: "Torre principal da praia" },
-  { id: 2, nome: "Posto Norte", descricao: "Trecho das pedras" },
-  { id: 3, nome: "Posto Sul", descricao: "Quiosque 4" },
-  { id: 4, nome: "Posto Molhe", descricao: "Saída do rio" },
-  { id: 5, nome: "Posto Camping", descricao: "Área de camping" },
-  { id: 6, nome: "Posto Farol", descricao: "Em frente ao farol" },
+  { id: 1, nome: "Posto 1", descricao: "Posto 1" },
+  { id: 2, nome: "Posto 2", descricao: "Posto 2" },
+  { id: 3, nome: "Posto 3", descricao: "Posto 3" },
+  { id: 4, nome: "Posto 4", descricao: "Posto 4" },
+  { id: 5, nome: "Posto 5", descricao: "Posto 5" },
+  { id: 6, nome: "Posto 6", descricao: "Posto 6" },
+  { id: 7, nome: "Posto 7", descricao: "Posto 7" },
+  { id: 8, nome: "Posto 8", descricao: "Posto 8" },
 ];
 
 function hoje() {
@@ -21,42 +23,21 @@ function agora() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function fotoDemo(hora, preview) {
+  return {
+    hora: hora || agora(),
+    arquivoId: preview || PLACEHOLDER_FOTO,
+  };
+}
+
+const PLACEHOLDER_FOTO =
+  "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAAEAAQMBIgACEQEDEQH/xAAXAAADAQAAAAAAAAAAAAAAAAAAAQID/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8A0A==";
+
 function estadoInicial() {
   return {
-    proximoId: 4,
+    proximoId: 1,
     postos: POSTOS,
-    registros: [
-      {
-        id: 1,
-        postoId: 1,
-        finalizado: false,
-        checkin: [{ hora: "08:12" }],
-        checkout: [],
-        relatorio: null,
-        data: hoje(),
-        hora: "08:12",
-      },
-      {
-        id: 2,
-        postoId: 2,
-        finalizado: true,
-        checkin: [{ hora: "07:40" }],
-        checkout: [{ hora: "16:05" }],
-        relatorio: { prevManha: 2, prevTarde: 1, vivaManha: 1, vivaTarde: 0 },
-        data: hoje(),
-        hora: "07:40",
-      },
-      {
-        id: 3,
-        postoId: 3,
-        finalizado: true,
-        checkin: [{ hora: "08:00" }],
-        checkout: [{ hora: "15:50" }],
-        relatorio: { prevManha: 0, prevTarde: 1, vivaManha: 0, vivaTarde: 1 },
-        data: hoje(),
-        hora: "08:00",
-      },
-    ],
+    registros: [],
   };
 }
 
@@ -89,25 +70,55 @@ export function loginLocal(email, senha) {
   return null;
 }
 
+function normalizarEstado(s) {
+  if (!s || typeof s !== "object") return estadoInicial();
+  // Sempre usa a lista oficial Posto 1–8 no modo demo.
+  s.postos = POSTOS;
+  if (!Array.isArray(s.registros)) s.registros = [];
+  if (!Number.isFinite(s.proximoId) || s.proximoId < 1) s.proximoId = 1;
+  return s;
+}
+
 export function getDemoState() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return normalizarEstado(JSON.parse(raw));
   } catch {
     /* ignora estado quebrado */
   }
   const s = estadoInicial();
-  localStorage.setItem(KEY, JSON.stringify(s));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {
+    /* sem storage no aparelho */
+  }
   return s;
 }
 
 function salvar(s) {
-  localStorage.setItem(KEY, JSON.stringify(s));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {
+    const leve = {
+      ...s,
+      registros: (s.registros || []).map((r) => ({
+        ...r,
+        checkin: (r.checkin || []).map((f) => ({ hora: f.hora, arquivoId: PLACEHOLDER_FOTO })),
+        checkout: (r.checkout || []).map((f) => ({ hora: f.hora, arquivoId: PLACEHOLDER_FOTO })),
+      })),
+    };
+    try {
+      localStorage.setItem(KEY, JSON.stringify(leve));
+      Object.assign(s, leve);
+    } catch {
+      localStorage.removeItem(KEY);
+    }
+  }
   return s;
 }
 
 export function demoListPostos() {
-  return getDemoState().postos;
+  return getDemoState().postos || POSTOS;
 }
 
 export function demoCreatePosto({ nome, descricao }) {
@@ -126,21 +137,34 @@ export function demoDeletePosto(id) {
 }
 
 export function demoListRegistros() {
-  return getDemoState().registros;
+  return getDemoState().registros || [];
 }
 
 export function demoListRegistrosAtivos() {
-  return getDemoState().registros.filter((r) => !r.finalizado);
+  return (getDemoState().registros || []).filter((r) => r && !r.finalizado);
 }
 
-export function demoCheckin(postoId) {
+export function demoCheckin(postoId, preview) {
   const s = getDemoState();
+  const pid = Number(postoId);
+  let ativo = s.registros.find((r) => r.postoId === pid && !r.finalizado);
+  const foto = fotoDemo(agora(), preview);
+
+  if (ativo) {
+    if ((ativo.checkin || []).length >= 2) {
+      throw new Error("Limite de 2 fotos atingido para este registro.");
+    }
+    ativo.checkin = [...(ativo.checkin || []), foto];
+    salvar(s);
+    return ativo;
+  }
+
   const id = s.proximoId++;
   const registro = {
     id,
-    postoId: Number(postoId),
+    postoId: pid,
     finalizado: false,
-    checkin: [{ hora: agora() }],
+    checkin: [foto],
     checkout: [],
     relatorio: null,
     data: hoje(),
@@ -151,23 +175,43 @@ export function demoCheckin(postoId) {
   return registro;
 }
 
-export function demoCheckout(postoId) {
+export function demoCheckout(postoId, preview) {
   const s = getDemoState();
-  const ativo = s.registros.find((r) => r.postoId === Number(postoId) && !r.finalizado);
-  if (ativo) ativo.checkout = [{ hora: agora() }];
+  const pid = Number(postoId);
+  const ativo = s.registros.find((r) => r.postoId === pid && !r.finalizado);
+  if (!ativo || !(ativo.checkin || []).length) {
+    throw new Error("Realize o Check-in antes do Check-Out.");
+  }
+  if ((ativo.checkout || []).length >= 2) {
+    throw new Error("Limite de 2 fotos atingido para este registro.");
+  }
+  ativo.checkout = [...(ativo.checkout || []), fotoDemo(agora(), preview)];
   salvar(s);
-  return ativo || {};
+  return ativo;
 }
 
-export function demoFinalizar(id, relatorio) {
+export function demoFinalizar(id, relatorio, postoId) {
   const s = getDemoState();
-  const r = s.registros.find((x) => x.id === Number(id));
-  if (r) {
-    r.finalizado = true;
-    r.relatorio = relatorio;
+  const nid = Number(id);
+  const np = Number(postoId);
+  let r = Number.isFinite(nid)
+    ? s.registros.find((x) => x.id === nid)
+    : null;
+  if (!r && Number.isFinite(np)) {
+    r = s.registros.find((x) => x.postoId === np && !x.finalizado);
   }
+  if (!r) {
+    throw new Error("Registro não encontrado. Faça o check-in de novo.");
+  }
+  r.finalizado = true;
+  r.relatorio = {
+    prevManha: Number(relatorio?.prevManha) || 0,
+    prevTarde: Number(relatorio?.prevTarde) || 0,
+    vivaManha: Number(relatorio?.vivaManha) || 0,
+    vivaTarde: Number(relatorio?.vivaTarde) || 0,
+  };
   salvar(s);
-  return r || {};
+  return { ...r, checkin: r.checkin || [], checkout: r.checkout || [] };
 }
 
 export function demoLimparRegistros() {
